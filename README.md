@@ -12,6 +12,7 @@ Each skill lives in its own directory: a `SKILL.md` playbook plus deployable scr
 | 技能 | 说明 |
 |---|---|
 | [muse-vm-bootstrap](muse-vm-bootstrap/) | 易失容器型 VM（如 Muse 宿主 VM）的基建初始化与灾后恢复：`.bak` unit 规范、出站代理与 TLS MITM 处理、幂等 `restore-infra.sh`、看门狗与多通道告警 |
+| [free-model-probe](free-model-probe/) | 免费推理模型三层可用性探测：动态发现、价格校验、真实推理；目录≠可用，告警只在默认模型失效时触发 |
 
 ## 使用 / Usage
 
