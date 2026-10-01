@@ -1,0 +1,14 @@
+[Unit]
+Description=FRP relay: 127.0.0.1:11700 -> VPS 17000 via egress proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/home/hatch/.frp/proxy.env
+ExecStart=/usr/bin/python3 /home/hatch/workspace/frp-relay.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

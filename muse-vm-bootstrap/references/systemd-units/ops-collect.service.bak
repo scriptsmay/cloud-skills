@@ -1,0 +1,9 @@
+[Unit]
+Description=Collect ops dashboard status.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hatch
+Environment=HOME=/home/hatch
+EnvironmentFile=/home/hatch/.hermes/proxy.env
+ExecStart=/home/hatch/workspace/ops-collect.py

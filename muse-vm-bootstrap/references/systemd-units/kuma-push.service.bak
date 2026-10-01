@@ -1,0 +1,6 @@
+[Unit]
+Description=Push heartbeat to Uptime Kuma
+
+[Service]
+Type=oneshot
+ExecStart=/home/hatch/bin/kuma-push.sh

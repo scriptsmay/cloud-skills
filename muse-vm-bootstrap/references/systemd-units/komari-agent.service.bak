@@ -1,0 +1,14 @@
+[Unit]
+Description=Komari Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/home/hatch/.komari/proxy.env
+ExecStart=/home/hatch/.komari/agent -e <KOMARI_PANEL_URL> -t <KOMARI_AGENT_TOKEN>
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

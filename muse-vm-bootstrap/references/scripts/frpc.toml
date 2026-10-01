@@ -1,0 +1,12 @@
+serverAddr = "127.0.0.1"
+serverPort = 11700
+
+auth.method = "token"
+auth.token = "<FRP_AUTH_TOKEN>"
+
+[[proxies]]
+name = "demo-site"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 18080
+customDomains = ["<YOUR_DOMAIN>"]

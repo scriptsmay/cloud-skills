@@ -1,0 +1,13 @@
+[Unit]
+Description=FRPC client (demo-site via relay)
+After=frp-relay.service
+Requires=frp-relay.service
+
+[Service]
+Type=simple
+ExecStart=/home/hatch/.frp/frpc -c /home/hatch/.frp/frpc.toml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

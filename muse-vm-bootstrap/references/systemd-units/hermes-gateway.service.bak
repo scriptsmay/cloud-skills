@@ -1,0 +1,19 @@
+[Unit]
+Description=Hermes Gateway (messaging platforms + cron scheduler)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hatch
+Environment=HOME=/home/hatch
+Environment=QQ_ALLOW_ALL_USERS=true
+EnvironmentFile=/home/hatch/.hermes/proxy.env
+ExecStart=/home/hatch/.hermes/hermes-agent/hermes gateway run
+Restart=always
+RestartSec=10
+# no_proxy/NO_PROXY intentionally NOT set: the runtime's bracketed IPv6 form
+# ([::1]) crashes httpx inside hermes. systemd does not inherit shell env.
+
+[Install]
+WantedBy=multi-user.target

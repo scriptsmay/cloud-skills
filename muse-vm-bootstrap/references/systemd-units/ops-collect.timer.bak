@@ -1,0 +1,9 @@
+[Unit]
+Description=Collect ops dashboard status every 60 seconds
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+
+[Install]
+WantedBy=timers.target
