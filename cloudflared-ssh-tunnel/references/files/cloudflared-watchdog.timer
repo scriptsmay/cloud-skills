@@ -1,0 +1,9 @@
+[Unit]
+Description=每分钟运行 cloudflared watchdog
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target

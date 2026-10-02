@@ -1,0 +1,16 @@
+# edge shim 的 systemd unit 模板。
+# __HTTPS_PROXY__ 占位符由 restore.sh 用 proxy.env 的内容替换
+#（已剥离 userinfo 的纯 host:port 形式，如 http://<EGRESS_PROXY_HOST:PORT>）。
+[Unit]
+Description=Cloudflare edge shim (CONNECT proxy for cloudflared)
+After=network.target
+
+[Service]
+Type=simple
+Environment=HTTPS_PROXY=__HTTPS_PROXY__
+ExecStart=/usr/bin/python3 /usr/local/bin/cloudflared-edge-shim.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

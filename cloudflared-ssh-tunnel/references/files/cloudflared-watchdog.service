@@ -1,0 +1,6 @@
+[Unit]
+Description=cloudflared VM 内 watchdog（每分钟巡检）
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cloudflared-watchdog.sh

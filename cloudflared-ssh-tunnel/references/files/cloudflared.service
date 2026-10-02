@@ -1,0 +1,17 @@
+# cloudflared 静态 unit。注意：实际 ExecStart 由
+# /etc/systemd/system/cloudflared.service.d/override.conf 清空并替换为
+# mount-namespace wrapper（不要用 `cloudflared service install`，
+# 无配置文件时它会直接退出 1）。
+[Unit]
+Description=Cloudflare Tunnel (SSH ingress via <PUBLIC_HOSTNAME>)
+After=network.target cloudflared-edge-shim.service
+Requires=cloudflared-edge-shim.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+# fake /etc/hosts, bind-mounted over /etc/hosts ONLY inside cloudflared's
+# mount namespace. Poisoned edge domains resolve to the local shim.
+127.0.0.1 localhost
+::1 localhost ip6-localhost ip6-loopback
+127.0.0.1 region1.v2.argotunnel.com
+127.0.0.1 region2.v2.argotunnel.com

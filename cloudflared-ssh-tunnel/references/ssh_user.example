@@ -1,0 +1,3 @@
+# SSH 登录用户名，单行。该用户会被设为 uid 0（root 等效），
+# 因为 NoNewPrivs 沙箱下 sudo/su 永远无法提权。
+<SSH_USER>
