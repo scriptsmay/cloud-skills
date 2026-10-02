@@ -5,7 +5,7 @@ tags: [llm, free-models, inference, probing, monitoring, openai-compatible]
 created: 2026-10-01
 updated: 2026-10-02
 author: scriptsmay
-status: draft
+status: active
 ---
 
 # Free Model Probe
