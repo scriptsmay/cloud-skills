@@ -1,3 +1,13 @@
+---
+title: "Free Model Probe"
+type: skill
+tags: [llm, free-models, inference, probing, monitoring, openai-compatible]
+created: 2026-10-01
+updated: 2026-10-02
+author: scriptsmay
+status: draft
+---
+
 # Free Model Probe
 
 免费推理模型可用性探测：动态发现、价格校验、真实推理三层检查。
