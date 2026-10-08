@@ -3,7 +3,14 @@
 # 检查 shim 端口可达、cloudflared 进程存在、sshd active、metrics 非零；
 # 异常则重启对应服务。日志：~/.cloudflared/watchdog.log
 set -uo pipefail
-CFDIR="$HOME/.cloudflared"
+# systemd timer 下 HOME 可能未设置（set -u 会直接报错退出）；
+# 与 restore.sh / healthcheck.sh / cloudflared-ns.sh 保持同一回退逻辑：
+# token 实际持久在 PERSIST_HOME（部署时改成你自己的持久家目录）。
+PERSIST_HOME="${PERSIST_HOME:-<YOUR_PERSISTENT_HOME>}"
+CFDIR="${HOME:-$PERSIST_HOME}/.cloudflared"
+if [ ! -f "$CFDIR/token" ] && [ -f "$PERSIST_HOME/.cloudflared/token" ]; then
+  CFDIR="$PERSIST_HOME/.cloudflared"
+fi
 LOG="$CFDIR/watchdog.log"
 mkdir -p "$CFDIR"
 

@@ -1,15 +1,25 @@
 #!/bin/bash
 # cloudflared SSH 通道一键重建脚本（8 步，幂等，可重复执行）
-# 持久化输入：
+# 持久化输入（与本脚本同目录，即 references/ 下）：
 #   ~/.cloudflared/token        tunnel token（600，不进任何 unit 文件）
 #   ~/.cloudflared/user.pub     允许登录的 SSH 公钥（可多行）
-#   ~/workspace/cloudflared-setup/ssh_user   SSH 用户名（单行，uid 0）
-#   ~/workspace/cloudflared-setup/proxy.env  出站代理（单行，如 http://host:port，不带鉴权）
+#   ssh_user                    SSH 用户名（单行，uid 0）
+#   proxy.env                   出站代理（单行，如 http://<EGRESS_PROXY_HOST:PORT>，不带鉴权）
+# 可选（离线兜底）：
+#   cloudflared-linux-amd64.deb cloudflared 安装包（目标机已安装则不需要）
+#   debs/                       openssh-client/server/sftp 的 .deb 缓存
 set -euo pipefail
 
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FILES="$SETUP_DIR/files"
 CFDIR="$HOME/.cloudflared"
+# 整机替换会清空 $HOME（如 /root）：token / user.pub / 主机密钥的持久化副本
+# 存放在替换后保留的家目录。部署时把 PERSIST_HOME 改成你自己的持久家目录；
+# $CFDIR/token 不存在时自动回退到持久路径，保证 rescue 在新机上仍能拿到凭证。
+PERSIST_HOME="${PERSIST_HOME:-<YOUR_PERSISTENT_HOME>}"
+if [ ! -f "$CFDIR/token" ] && [ -f "$PERSIST_HOME/.cloudflared/token" ]; then
+  CFDIR="$PERSIST_HOME/.cloudflared"
+fi
 
 SSH_USER="$(tr -d '[:space:]' < "$SETUP_DIR/ssh_user" 2>/dev/null || true)"
 [ -n "$SSH_USER" ] || { echo "ERROR: 未设置 SSH 用户名，请写入 $SETUP_DIR/ssh_user（单行）"; exit 1; }
@@ -35,10 +45,17 @@ fi
 
 ### [2/8] openssh-server + SSH 用户（uid 0，因 NoNewPrivs 下 sudo 无效）
 log "[2/8] openssh-server 与用户 $SSH_USER"
+# VM 替换后 /etc/apt/sources.list.d/ubuntu.sources 常缺 URIs 行（apt 报 Malformed entry），
+# 先补齐（azure 镜像；cogentco 已死，不再使用），保证下面的 apt 兜底可用
+SRC=/etc/apt/sources.list.d/ubuntu.sources
+if [ -f "$SRC" ] && ! grep -q '^URIs:' "$SRC"; then
+  log "  ubuntu.sources 缺 URIs 行，按 azure 镜像补齐"
+  printf 'Types: deb\nURIs: http://azure.archive.ubuntu.com/ubuntu\nSuites: noble noble-updates noble-backports noble-security\nComponents: main restricted universe multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' > "$SRC"
+fi
 if ! dpkg -s openssh-server >/dev/null 2>&1; then
   if ls "$SETUP_DIR/debs"/openssh-server_*.deb >/dev/null 2>&1; then
     log "  用 debs/ 缓存安装（免 apt）"
-    dpkg -i "$SETUP_DIR"/debs/openssh-server_*.deb "$SETUP_DIR"/debs/openssh-sftp-server_*.deb || true
+    dpkg -i "$SETUP_DIR"/debs/openssh-client_*.deb "$SETUP_DIR"/debs/openssh-sftp-server_*.deb "$SETUP_DIR"/debs/openssh-server_*.deb || true
   fi
   if ! dpkg -s openssh-server >/dev/null 2>&1; then
     log "  缓存不可用，走 apt 安装"
