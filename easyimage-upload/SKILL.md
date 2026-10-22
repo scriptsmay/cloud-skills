@@ -1,7 +1,7 @@
 ---
 title: "EasyImage Upload"
 type: skill
-tags: [easyimage, image-host, upload, api, curl, python]
+tags: [easyimage, image-host, upload, api, curl, python, thumb.php, resize]
 created: 2026-10-22
 updated: 2026-10-22
 author: scriptsmay
@@ -10,9 +10,9 @@ status: active
 
 # EasyImage Upload
 
-通过 API 向自建 EasyImage 图床上传图片并取回直链的标准流程：接口契约、curl / Python 两种调用方式、错误码对照与凭据安全约定，供脚本与自动化任务（包括 AI agent）直接复用。
+通过 API 向自建 EasyImage 图床上传图片并取回直链的标准流程：接口契约、curl / Python 两种调用方式、用 `thumb.php` 按需派生展示尺寸、错误码对照与凭据安全约定，供脚本与自动化任务（包括 AI agent）直接复用。
 
-Upload images to a self-hosted EasyImage instance via its API and get back a direct URL: the exact request contract, curl and Python recipes, an error-code map, and credential-handling rules for scripts and AI agents.
+Upload images to a self-hosted EasyImage instance via its API and get back a direct URL: the exact request contract, curl and Python recipes, on-demand derived sizes via `thumb.php`, an error-code map, and credential-handling rules for scripts and AI agents.
 
 ## 为什么需要这个技能 / Why
 
@@ -33,7 +33,8 @@ The API contradicts common assumptions in three places — the file field is `im
 | 文件字段名 | `image`（**不是** `file`） |
 | 认证字段 | `token` 作为**表单字段**传递（**不是** `Authorization` 请求头） |
 | 成功判定 | `result == "success"` 且 `code == 200`，直链取返回 JSON 的 `url` 字段 |
-| 适用版本 | EasyImage 2.x（实测 2.8.5，无数据库版） |
+| 派生展示尺寸 | `GET /app/thumb.php?img=<原图路径>&w=<宽>[&h=<高>]&q=<质量>`（见步骤 5） |
+| 适用版本 | EasyImage 2.x（上传契约实测 2.8.5，派生尺寸实测 2.8.6） |
 
 ## 前置条件 / Prerequisites
 
@@ -116,6 +117,54 @@ python3 references/easyimage_upload.py /path/to/image.png
 - `del` — 删除链接（内含删除凭证，**等同密码，勿外泄、勿入公开文档/日志/仓库**）
 - `id` — 图床侧的图片序号
 
+### 5. 派生展示尺寸（推荐）
+
+原图常是 2000–3000px、1 MB 以上，而卡片/列表往往只需要固定宽度。EasyImage 内置的 `thumb.php` 可以按需裁剪缩放：不用重新上传，也不用在本地跑图像处理，原图保留即可随时换尺寸。
+
+**接口契约**
+
+| 项目 | 值 |
+| :--- | :--- |
+| 接口地址 | `GET https://<YOUR_EASYIMAGE_HOST>/app/thumb.php` |
+| `img` | 原图 `url` 的 pathname，必须以 `/i/` 开头（如 `/i/1/2026/01/01/example-1.jpg`），**不要**传完整域名 |
+| `w` | 目标宽度（px）；只给 `w` 时高度按原比例 |
+| `h` | 可选；与 `w` 同时给定时输出正好 `w×h`（裁剪填充，不保持原比例） |
+| `q` | JPEG 质量 1–100，展示图建议 80–82 |
+| 响应 | `image/jpg`，带 `Access-Control-Allow-Origin: *` 与 `cache-control: max-age=7200, must-revalidate` |
+
+**常用档位（实测数据）**
+
+| 用途 | 参数 | 输出 | 体积 |
+| :--- | :--- | :--- | :--- |
+| 卡片主图（1080×1440 画布） | `w=1080&q=82` | 1080×1440（3:4 源图） | ≈139 KB（源图 2268×3024 / 1.28 MB） |
+| 列表缩略图（3:4） | `w=258&h=344&q=80` | 258×344 | ≈15 KB |
+| 轻量展示 / 种子数据 | `w=900&q=80` | 900 宽等比 | ≈96 KB |
+
+**派生 URL 生成（JS）**
+
+```js
+function buildDerivedUrls(originalUrl, baseUrl) {
+  const { pathname } = new URL(originalUrl);
+  if (!pathname.startsWith('/i/')) return null; // 非图床上传路径无法派生
+  return {
+    card: `${baseUrl}/app/thumb.php?img=${pathname}&w=1080&q=82`,
+    thumb: `${baseUrl}/app/thumb.php?img=${pathname}&w=258&h=344&q=80`,
+  };
+}
+```
+
+**落库约定（素材/内容表）**
+
+- `url` — 派生后的展示图（卡片用 1080 宽）
+- `thumb_url` — 258×344 派生缩略图
+- `source_url` — 上传返回的原图直链，**必须单独保留**：派生链接依赖原文件存在，换尺寸只改参数，不用重新上传
+
+**注意**
+
+- 只有 `/i/` 路径能走 `thumb.php`；外部直链无法派生，回落到原图。
+- 源图缺失时 `thumb.php` 不返回 404，而是 **HTTP 200 + PNG 占位图**（实测 274×141）；批量生成后要抽查 `content-type` 与实际尺寸。
+- 同一路径替换原图后派生 URL 不变，可能命中 2 小时缓存；需要立即生效请换文件名/路径。
+
 ## 故障排查 / Troubleshooting
 
 | 现象 / 返回 | 原因 | 处理 |
@@ -125,6 +174,7 @@ python3 references/easyimage_upload.py /path/to/image.png
 | `{"result":"failed","code":400,"message":"图片高度太小。"}` | 图片尺寸低于图床最小阈值（如 1×1 测试图） | 换 ≥200×200 的真实图片；或在图床后台调整最小尺寸设置 |
 | 超时 / 连接失败 | 图床不可达、反向代理或网络问题 | 先单独 `curl -I $EASYIMAGE_BASE_URL` 确认站点可达，再重试 1 次 |
 | 返回非 JSON | 打到了错误路径或被代理拦截页替换 | 确认路径为 `/api/index.php` 且根地址无多余前缀 |
+| `thumb.php` 返回 200，但图片是 274×141 的 PNG 占位图 | `img` 指向的源图不存在或已被删除 | 用原图直链核对路径；确认原图未删，派生图只是视图，不能替代原图 |
 
 ## 避坑 / Pitfalls（均经实测踩出）
 
@@ -133,6 +183,9 @@ python3 references/easyimage_upload.py /path/to/image.png
 3. **图片尺寸不能太小**：1×1 像素图返回 code 400；200×200 正常通过。
 4. **token 尾随换行必须去除**：token 文件末尾的换行拼进表单会带上多余字符导致校验异常，读取时 `tr -d '\n'`（或在代码里 `.strip()`）。
 5. **删除链接是敏感凭据**：`del` 字段内的 hash 可直接删除对应图片，不要写入公开文档、日志或代码仓。
+6. **派生图依赖原图存在**：`thumb.php` 只是视图，原图删了派生链接就变成占位图；落库时把原图单独存到 `source_url`，不要只留派生 URL。
+7. **派生图不能只看 HTTP 状态码**：源图缺失也返回 200，必须校验 `content-type` 和实际像素尺寸。
+8. **同路径换图有缓存**：派生响应缓存 2 小时，替换原图后想立即生效就换文件名/路径。
 
 ## 检查清单 / Checklist
 
@@ -142,6 +195,8 @@ python3 references/easyimage_upload.py /path/to/image.png
 - [ ] 上传图片尺寸满足最小阈值（联调不用 1×1 测试图）？
 - [ ] 以 `result == "success"` 且 `code == 200` 判定成功，再从 `url` 取直链？
 - [ ] `del` 删除链接未写入公开位置、未随结果转发？
+- [ ] 展示图用 `/app/thumb.php` 派生（`w` / `h` / `q`），原图直链另存 `source_url`？
+- [ ] 派生图只从 `/i/` 路径生成，并抽查过实际尺寸（防 200 占位图）？
 
 ## 参考实现 / Reference
 
@@ -150,3 +205,4 @@ python3 references/easyimage_upload.py /path/to/image.png
 ## 实测记录 / Field Notes
 
 - 2026-10-22（EasyImage 2.8.5）：按本文档契约完成 curl 与 Python 两条路径的上传验证，返回 `url` 可直接访问；上文 204 / 202 / 400 三个错误码均为同日实测踩出后定位，非文档转述。
+- 2026-10-22（EasyImage 2.8.6）：`/app/thumb.php` 派生尺寸实测——源图 2268×3024 / 1.28 MB → `w=1080&q=82` 得 1080×1440 / 139 KB，`w=258&h=344&q=80` 得 258×344 / 15 KB，`w=258&h=258` 得 258×258（确认 `w+h` 为裁剪填充）；源图缺失返回 200 + 274×141 PNG 占位图；`/i/` 与 `/app/thumb.php` 均带 `Access-Control-Allow-Origin: *`（canvas 可直接取图）。
