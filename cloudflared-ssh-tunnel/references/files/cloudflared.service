@@ -3,7 +3,7 @@
 # mount-namespace wrapper（不要用 `cloudflared service install`，
 # 无配置文件时它会直接退出 1）。
 [Unit]
-Description=Cloudflare Tunnel (SSH ingress via <PUBLIC_HOSTNAME>)
+Description=Cloudflare Tunnel (SSH ingress)
 After=network.target cloudflared-edge-shim.service
 Requires=cloudflared-edge-shim.service
 
