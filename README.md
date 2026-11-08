@@ -16,6 +16,8 @@ Each skill lives in its own directory: a `SKILL.md` playbook plus deployable scr
 | [cloudflared-ssh-tunnel](cloudflared-ssh-tunnel/) | 敌对沙箱网络中的 Cloudflare Tunnel SSH 入口：强制 TCP、DNS 污染绕过、出站代理穿透、无 sudo 生存，VM 重启后一键重建 + 自救 |
 | [easyimage-upload](easyimage-upload/) | EasyImage 自建图床 API 上传取直链：`image` 字段名 / token 表单传递契约、204/202/400 错误码对照、curl 与 Python 双路径、`thumb.php` 按需派生展示尺寸（1080 卡片图 / 3:4 缩略图）、凭据安全（token 不落盘、删除链接默认脱敏）与 Agent 执行约定 |
 | [komari-agent-auto-discovery](komari-agent-auto-discovery/) | Komari agent 自动发现接管：凭一个主服务级密钥 self-register 到已有面板，不逐台发 token；官方安装脚本 / systemd 模板、密钥走 EnvironmentFile、验收与故障排查 |
+| [weibo-qr-login](weibo-qr-login/) | 云端 Linux 容器上微博扫码登录：Playwright + 系统 Chromium 持久化 profile、二维码 10 分钟时效与防缓存发码、DOM 登录检测、30 分钟自查 + 容器外巡检；凭据与日志不出本机 |
+| [weibo-video-post](weibo-video-post/) | 云端 Linux 容器上发视频微博：保存的会话发单条视频、等上传完成再点发送、个人主页核验链接；凭据与日志不出本机 |
 
 ## 使用 / Usage
 
