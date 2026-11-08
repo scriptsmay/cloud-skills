@@ -151,7 +151,7 @@ Log into Weibo from a cloud Linux container/VM with no local browser: scan a QR 
 
 ## 参考范例（REFERENCE）
 
-- **参考来源**：2026-11-08 云容器 + 测试号扫码登录实测（脚本 `references/weibo_qr_login.py` 即本次实测的第 8 版守护脚本通用化后所得）；微博登录页 `https://weibo.com/`，登录弹窗 `https://passport.weibo.com/sso/signin`；Playwright 官方文档：Persistent context（`launch_persistent_context`）与 `locator` 选择器。
+- **参考来源**：2026-11-08 云容器 + 测试号扫码登录实测（脚本 `references/weibo_qr_login.py` 即本次实测的守护脚本通用化后所得）；微博登录页 `https://weibo.com/`，登录弹窗 `https://passport.weibo.com/sso/signin`；Playwright 官方文档：Persistent context（`launch_persistent_context`）与 `locator` 选择器。
 - **值得沿用**：DOM 登录检测（无登录按钮 + 有 `placeholder*="新鲜事"`）；鼠标坐标点击登录按钮 + 3 次重试；二维码方形尺寸校验；带时间戳的二维码文件名；JPEG 截图；`python -P` 启动；base64 传文件（先取原文再粘贴）。
 - **应避免**：页内跨域 fetch 判断登录；`text=` 匹配 placeholder；手抄 base64 传文件；heredoc 传脚本；工作目录放 `inspect.py`；同路径重发二维码；把 `status.json` / `monitor.log` / 二维码贴进公开频道。
 
@@ -180,8 +180,8 @@ Log into Weibo from a cloud Linux container/VM with no local browser: scan a QR 
 
 - 日期：2026-11-08
   - 场景 / 输入：云容器 + 测试号扫码登录；Playwright 1.64 + 系统 Chromium；账号本人在场配合扫码。
-  - 结果：第一张码约 10 分钟过期、第二张疑似缓存旧图失效，第三张码扫码 + App 内确认后登录成功；登录检测最初两次方法全错（跨域 fetch、placeholder 的 `text=` 匹配），改 DOM 法后确认。登录后进入 30 分钟自查监控，容器外每 2 小时巡检一次；机器在凌晨闲置 30 分钟后自动暂停，外部 exec 唤醒成功、无冷却失败，监控进程存活、登录态保持。观测窗口约 20 小时（登录约 01:57 至当晚 22:00 收尾）。
-  - 后续改进：登录检测改为 DOM 法已固化进脚本；发码改为带时间戳的新文件名已固化；容器外巡检从 02:00 收尾改为 22:00（账号本人凌晨要睡觉），观测窗口如实记为约 20 小时、不凑 24 小时。
+  - 结果：第一张码约 10 分钟过期、第二张疑似缓存旧图失效，第三张码扫码 + App 内确认后登录成功；登录检测最初两次方法全错（跨域 fetch、placeholder 的 `text=` 匹配），改 DOM 法后确认。登录后进入 30 分钟自查监控，容器外每 2 小时巡检一次；机器在凌晨闲置 30 分钟后自动暂停，外部 exec 唤醒成功、无冷却失败，监控进程存活、登录态保持。观测进行中：登录约 01:57，截至当日 10:00 巡检登录仍在线；完整窗口待当晚 22:00 收尾后补全（预计约 20 小时，不凑 24 小时）。
+  - 后续改进：登录检测改为 DOM 法已固化进脚本；发码改为带时间戳的新文件名已固化；容器外巡检收尾时间从 02:00 改为 22:00（账号本人凌晨要睡觉），最终窗口以 22:00 报告为准。
 - 日期：2026-11-08（同一次观测）
   - 场景 / 输入：会话 Cookie 寿命观测。
   - 结果：`.weibo.com` 下 `SUB`/`SUBP` 约一年、`WBPSESS` 约 24 小时、`ALF` 约 30 天。Cookie 长命不等于服务端不踢人——是否在线一律以 DOM 检查为准。
