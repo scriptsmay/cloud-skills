@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""Weibo QR-code login on a cloud Linux container, with a login-state monitor.
+"""Weibo QR-code login on a cloud Linux container.
 
-Generic template derived from a real 2026-11-08 run (Playwright + system
-Chromium on a cloud container). Fill in the environment variables below;
-nothing in this file is account-specific.
+Logs in once via QR scan and exits. There is deliberately no login-state
+detection or monitoring here: after the scan succeeds the script saves the
+persistent profile + state.json, writes a final status.json, takes a
+logged-in screenshot for the account owner to eyeball, and exits.
+
+Keeping the session alive afterwards (heartbeats, container suspend/resume,
+noticing a logout, re-login after expiry) is the operator's own business
+and is not part of this skill.
 
 Privacy: everything this script writes (QR screenshots, profile dir,
-status.json, monitor.log, state.json) stays in WB_LOGIN_DIR on YOUR OWN
-machine. QR screenshots are single-use login credentials -- send one only to
-the account owner over a private channel, delete it after the login, and
-never commit any of these files to a shared repository. status.json /
-monitor.log contain your profile URL; never paste them into a public channel.
+status.json, state.json) stays in WB_LOGIN_DIR on YOUR OWN machine. QR
+screenshots are single-use login credentials -- send one only to the account
+owner over a private channel, delete it after the login, and never commit any
+of these files to a shared repository.
 
 Usage:
     python3 -m venv venv && ./venv/bin/python -m pip install playwright
@@ -19,10 +23,6 @@ Usage:
     # -P (safe_path) matters: a file named inspect.py in the working
     # directory shadows the stdlib `inspect` module and breaks any script
     # that imports asyncio. Do not name your own files inspect.py.
-
-The script runs in the foreground: it logs in (or waits for a QR scan),
-then checks the login state every WB_CHECK_INTERVAL_SEC seconds and appends
-to monitor.log. Run it under nohup / tmux / systemd to keep it alive.
 """
 import json
 import os
@@ -33,7 +33,6 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ.get("WB_LOGIN_DIR", os.path.expanduser("~/weibo-login"))
 PROFILE = os.path.join(BASE, "profile")
 CHROMIUM_PATH = os.environ.get("CHROMIUM_PATH", "/usr/bin/chromium")
-CHECK_INTERVAL = int(os.environ.get("WB_CHECK_INTERVAL_SEC", "1800"))
 SCAN_TIMEOUT = int(os.environ.get("WB_SCAN_TIMEOUT_SEC", "1800"))
 # Update Chrome/<major> to match your installed Chromium when it drifts.
 USER_AGENT = os.environ.get(
@@ -110,8 +109,11 @@ def ensure_fresh_qr(page):
     return grab_qr(page)
 
 
-def check_login(page):
-    """DOM-based login check.
+def confirm_login(page):
+    """One-time check that the single scan succeeded.
+
+    This poll exists only to know when the scan has worked; the script does
+    not keep checking afterwards and records no identity.
 
     Two dead ends, do not re-try them:
     - In-page fetch("https://m.weibo.cn/api/config") is blocked cross-origin
@@ -129,25 +131,8 @@ def check_login(page):
         composer = page.locator('[placeholder*="新鲜事"]').count()
         return login_btn == 0 and composer > 0
     except Exception as e:
-        log("check_login err: " + str(e))
+        log("confirm_login err: " + str(e))
         return False
-
-
-def get_identity(page):
-    """Best-effort profile links from the logged-in homepage.
-
-    Used only so the operator can eyeball that the right account logged in.
-    The value is written to the LOCAL monitor.log only -- never share it.
-    """
-    try:
-        links = page.evaluate("""() => {
-            const hrefs = [...document.querySelectorAll('a')].map(a => a.href)
-                .filter(h => h.includes('/u/') || h.includes('/n/'));
-            return hrefs.slice(0, 5);
-        }""")
-        return str(links)
-    except Exception as e:
-        return "identity err: " + str(e)
 
 
 def open_login_popup(ctx, page):
@@ -207,9 +192,9 @@ with sync_playwright() as p:
     page.goto("https://weibo.com/", wait_until="domcontentloaded", timeout=60000)
     page.wait_for_timeout(10000)
     log("main page loaded title=" + repr(page.title()))
-    logged_in = check_login(page)
+    logged_in = confirm_login(page)
     if logged_in:
-        log("already logged in on load, identity=" + get_identity(page))
+        log("already logged in on load")
     else:
         popup = open_login_popup(ctx, page)
         if popup:
@@ -232,9 +217,9 @@ with sync_playwright() as p:
         polls = 0
         while time.time() < deadline:
             polls += 1
-            if check_login(page):
+            if confirm_login(page):
                 logged_in = True
-                log("LOGIN DETECTED on main page, identity=" + get_identity(page))
+                log("LOGIN CONFIRMED on main page")
                 break
             if polls % 12 == 0:
                 try:
@@ -253,29 +238,10 @@ with sync_playwright() as p:
         ctx.storage_state(path=os.path.join(BASE, "state.json"))
         shoot(page, "logged-in.jpg")
         write_status({"stage": "logged_in", "url": page.url, "title": page.title()})
-        log("logged in, state saved, title=" + repr(page.title())
-            + " identity=" + get_identity(page))
-        with open(os.path.join(BASE, "monitor.log"), "a") as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S") + " LOGGED_IN url=" + page.url
-                    + " identity=" + get_identity(page) + "\n")
-        log("entering monitor mode: check every " + str(CHECK_INTERVAL)
-            + "s via DOM; keep this process alive -- closing the browser "
-            "for about an hour loses the session, only a fresh QR scan restores it")
-        while True:
-            time.sleep(CHECK_INTERVAL)
-            ok = check_login(page)
-            line = time.strftime("%Y-%m-%d %H:%M:%S") + " login=" + str(ok) + " url=" + page.url
-            log(line)
-            with open(os.path.join(BASE, "monitor.log"), "a") as f:
-                f.write(line + "\n")
-            write_status({"stage": "monitoring", "login": ok,
-                          "url": page.url, "title": page.title(),
-                          "last_check": time.strftime("%Y-%m-%d %H:%M:%S")})
-            if not ok:
-                shoot(page, "logged-out.jpg")
-                log("login LOST, saved logged-out.jpg, continuing to watch")
+        log("logged in, state saved, title=" + repr(page.title()))
+        log("done -- exiting. Show logged-in.jpg to the account owner to "
+            "confirm the right account; keeping the session alive afterwards "
+            "is the operator's own business, not this script's.")
     else:
         write_status({"stage": "scan_timeout", "url": page.url})
-        log("scan window expired without login; browser kept open")
-        while True:
-            time.sleep(3600)
+        log("scan window expired without login; exiting")
