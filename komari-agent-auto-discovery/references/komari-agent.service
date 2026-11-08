@@ -1,0 +1,28 @@
+# Komari Agent systemd 单元模板（自动发现方式）
+#
+# 用法：
+#   1. 把本文件拷到 /etc/systemd/system/komari-agent.service
+#   2. 建 /etc/komari/ad-key.env（权限 600，属主 root），内容：
+#        KOMARI_ENDPOINT="https://<KOMARI_ENDPOINT>"
+#        KOMARI_AD_KEY="<AUTO_DISCOVERY_KEY>"
+#   3. systemctl daemon-reload && systemctl enable --now komari-agent
+#
+# 注意：
+#   - 密钥只放 EnvironmentFile，不要写进 ExecStart（ps 可见）。
+#   - 目标机器走出站代理时，在 ad-key.env 里追加 HTTPS_PROXY / NO_PROXY。
+#   - 二进制路径按实际安装位置改；官方安装脚本默认在 /opt/komari。
+
+[Unit]
+Description=Komari Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/komari/ad-key.env
+ExecStart=/opt/komari/komari-agent -e ${KOMARI_ENDPOINT} --auto-discovery ${KOMARI_AD_KEY}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
