@@ -13,7 +13,7 @@ Each skill lives in its own directory: a `SKILL.md` playbook plus deployable scr
 |---|---|
 | [muse-vm-bootstrap](muse-vm-bootstrap/) | 易失容器型 VM（如 Muse 宿主 VM）的基建初始化与灾后恢复：`.bak` unit 规范、出站代理与 TLS MITM 处理、幂等 `restore-infra.sh`、看门狗与多通道告警 |
 | [free-model-probe](free-model-probe/) | 免费推理模型三层可用性探测：动态发现、价格校验、真实推理；目录≠可用，告警只在默认模型失效时触发 |
-| [cloudflared-ssh-tunnel](cloudflared-ssh-tunnel/) | 敌对沙箱网络中的 Cloudflare Tunnel SSH 入口：强制 TCP、DNS 污染绕过、出站代理穿透、无 sudo 生存，VM 重启后一键重建 + 自救 |
+| [cloudflared-ssh-tunnel](cloudflared-ssh-tunnel/) | 敌对沙箱网络中的 Cloudflare Tunnel SSH 入口：强制 TCP 传输、DNS 污染绕过、出站代理穿越、无 sudo 可用，整机替换后一键重建 + 内外两层自救 |
 | [easyimage-upload](easyimage-upload/) | EasyImage 自建图床 API 上传取直链：`image` 字段名 / token 表单传递契约、204/202/400 错误码对照、curl 与 Python 双路径、`thumb.php` 按需派生展示尺寸（1080 卡片图 / 3:4 缩略图）、凭据安全（token 不落盘、删除链接默认脱敏）与 Agent 执行约定 |
 | [komari-agent-auto-discovery](komari-agent-auto-discovery/) | Komari agent 自动发现接管：凭一个主服务级密钥 self-register 到已有面板，不逐台发 token；官方安装脚本 / systemd 模板、密钥走 EnvironmentFile、验收与故障排查 |
 | [weibo-qr-login](weibo-qr-login/) | 云端 Linux 容器上微博扫码登录：Playwright + 系统 Chromium 持久化 profile、二维码 10 分钟时效与防缓存发码、一次性扫码成功确认；凭据与日志不出本机 |

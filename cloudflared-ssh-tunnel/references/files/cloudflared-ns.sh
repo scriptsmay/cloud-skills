@@ -7,7 +7,9 @@
 #    ingress config is pushed from the Cloudflare side)
 set -euo pipefail
 
-PERSIST_HOME="/home/hatch"
+# 持久家目录（整机替换后仍保留）：tunnel token / user.pub / 主机密钥的
+# 持久化副本放在这里。部署时改成你自己的持久家目录，也可用环境变量覆盖。
+PERSIST_HOME="${PERSIST_HOME:-<YOUR_PERSISTENT_HOME>}"
 TOKEN_FILE="$PERSIST_HOME/.cloudflared/token"
 
 if [ ! -f "$TOKEN_FILE" ]; then

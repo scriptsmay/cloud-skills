@@ -3,7 +3,7 @@ title: "Cloudflared SSH Tunnel"
 type: skill
 tags: [cloudflare, tunnel, ssh, cloudflared, egress-proxy, sandbox, self-healing]
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-06
 author: scriptsmay
 status: active
 ---
@@ -83,12 +83,12 @@ references/
     sshd-keyonly.conf              # 仅密钥登录加固
 ```
 
-`cloudflared-ns.sh` 里 `PERSIST_HOME` 写死了家目录，换家目录时同步改。
+`cloudflared-ns.sh` 开头 `PERSIST_HOME` 指向持久家目录，部署时改成自己的（也可用环境变量覆盖）。
 
 ## 部署步骤 / Deployment
 
 1. Cloudflare Dashboard 建 Named Tunnel，复制 token，配好 Public Hostname → `ssh://localhost:22`
-2. 把 `references/` 内容拷到目标机家目录 `~/cloudflared-setup/`（保持 `files/` 子目录结构）
+2. 把 `references/` 内容拷到目标机家目录 `~/cloudflared-setup/`（保持 `files/` 子目录结构）；把 cloudflared 的 `.deb` 安装包放到该目录（目标机已安装 cloudflared 则不需要），可选把 openssh 三个 `.deb` 放进 `debs/` 做离线兜底
 3. 写入变量：
    - `~/.cloudflared/token`（权限 600）
    - `~/.cloudflared/user.pub`（允许登录的 SSH 公钥，可多行）
@@ -122,6 +122,7 @@ VM 重启会清空一切非家目录内容，所以**触发器必须在 VM 之�
 
 - **内层**：VM 内 watchdog（`cloudflared-watchdog.timer` 每分钟）：检查 shim 端口可达、cloudflared 进程存在、sshd active、metrics 非零；异常重启对应服务
 - **外层**：VM 之外的调度器每 5 分钟跑 `healthcheck.sh`：检查 6 项（3 个 unit、用户存在、无 `/run/nologin`、`ha_connections==2`）；健康则静默，异常则 `flock` 单例执行 `restore.sh`，90 秒后复验；输出 `HEALTHY` / `RESCUED` / `FAILED`，只有后两者需要告警
+- **整机替换后的凭证回退**：整机替换会清空 `$HOME`（如 `/root`，token / user.pub / 主机密钥全丢）。持久化副本放在替换后保留的家目录；`restore.sh`、`healthcheck.sh`、`cloudflared-ns.sh`、`cloudflared-watchdog.sh` 在 `$HOME/.cloudflared/token` 不存在时自动回退到 `PERSIST_HOME`（默认 `<YOUR_PERSISTENT_HOME>`，部署时改成自己的持久家目录，也可用环境变量覆盖），保证自救仍能拿到凭证
 
 ## 客户端 / Client
 
@@ -153,6 +154,7 @@ Use one tunnel per host when each host needs a fixed entry point; share one toke
 - **假 hosts 只影响 cloudflared**：`unshare --mount` + `mount --bind`，系统其他部分的解析不受影响
 - **不要用 `cloudflared service install`**：无配置文件时直接退出 `1`；本方案用静态 unit 文件
 - **sshd 细节**：重建后删除 `/run/nologin`（否则报 `System is booting up` 拒绝登录）；`/run/sshd` 每次重建（tmpfs 重启会丢）
+- **apt 源兜底**：VM 替换后 `/etc/apt/sources.list.d/ubuntu.sources` 常缺 `URIs` 行（apt 报 Malformed entry）；`restore.sh` 先按 azure 镜像补齐，且 `debs/` 缓存的 openssh-client/server/sftp 三个包一起装，避免 apt 不可用时安装失败
 
 ## 故障排查 / Troubleshooting
 

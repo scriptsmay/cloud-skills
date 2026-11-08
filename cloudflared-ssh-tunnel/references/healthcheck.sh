@@ -8,6 +8,12 @@
 set -uo pipefail
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CFDIR="$HOME/.cloudflared"
+# 整机替换会清空 $HOME（如 /root）：持久化副本在替换后保留的家目录
+#（见 restore.sh 同名注释）。部署时把 PERSIST_HOME 改成你自己的持久家目录。
+PERSIST_HOME="${PERSIST_HOME:-<YOUR_PERSISTENT_HOME>}"
+if [ ! -f "$CFDIR/token" ] && [ -f "$PERSIST_HOME/.cloudflared/token" ]; then
+  CFDIR="$PERSIST_HOME/.cloudflared"
+fi
 SSH_USER="$(tr -d '[:space:]' < "$SETUP_DIR/ssh_user" 2>/dev/null || true)"
 LOCK="$CFDIR/healthcheck.lock"
 
