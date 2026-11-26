@@ -39,6 +39,18 @@ Pause if the user cannot confirm authorization to administer the host or control
 1. **Inspect first.** Confirm Linux distribution, architecture, KVM/container type, `systemd`, login user, sudo, disk mount/persistence, and existing listeners. Do not overwrite existing SSH, tunnel, probe, or firewall configuration without showing the diff and getting user approval.
 2. **Establish recovery boundaries.** Choose a persistent data directory. Keep credentials outside Git and workspace archives. Explain that suspend/resume persistence does not guarantee survival of instance deletion or provider rebuild.
 3. **Prepare SSH.** Install/enable OpenSSH using the distribution package manager. Install only the user's public key into the selected account's `authorized_keys` with directory mode `0700`, file mode `0600`, correct ownership. Do not open public port 22 when using Tunnel access.
+
+   Bind SSH to loopback so only the Tunnel can reach it. On **Ubuntu 24.04+ / OpenSSH 9.6+** the server is socket-activated: `sshd_config`'s `ListenAddress` is **ignored**, because `ssh.socket` owns the listeners. Override the socket instead:
+
+   ```ini
+   # /etc/systemd/system/ssh.socket.d/10-tunnel-only.conf
+   [Socket]
+   ListenStream=
+   ListenStream=127.0.0.1:22
+   ListenStream=[::1]:22
+   ```
+
+   Then `systemctl daemon-reload && systemctl restart ssh.socket` and confirm `ss -ltn` shows only `127.0.0.1:22` and `[::1]:22`. Before restarting, arm a rollback timer (`systemd-run --on-active=10min /root/ssh-rollback.sh` that moves the drop-in aside and restarts the socket) so a mistake cannot lock the user out; cancel it once a fresh Tunneled SSH session succeeds. Keep `cloudflared` pointed at `ssh://localhost:22` — both loopback families stay bound, so either resolution works.
 4. **Install CFSM probe.** Use the current official CFSM agent installation instructions. Run the installer with the secret supplied without printing it. Pass **only** `-name=<display name>` and omit `-id` so the panel creates the record on first report; use `-id` only when the user has an existing panel-generated UUID to bind to. Confirm a root-managed `cf-probe.service` exists, is enabled and active, then verify the node appears in the panel. Do not infer success from installer exit code alone.
 5. **Create the Tunnel with the user.** In Cloudflare Zero Trust, the user creates a remotely managed Tunnel and Public Hostname for SSH (`ssh://localhost:22`). Explain the Access client requirement: SSH clients need `cloudflared access ssh` configured as ProxyCommand; a public hostname alone is not an SSH browser endpoint. Never automate dashboard login or ask for the user's Cloudflare account password.
 6. **Install cloudflared.** Use the official package/release for the detected architecture. Resolve its absolute path with `command -v cloudflared`. Store the Tunnel token in a root-owned directory (`0700`) and file (`0600`); configure the system service to read it from a file, not a command-line argument. Back up the unit into persistent storage with mode `0600`.
