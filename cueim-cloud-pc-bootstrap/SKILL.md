@@ -7,6 +7,14 @@ description: "Provision and recover a Cue.im Linux cloud PC: interactively colle
 
 Guide an agent and user through first-time setup of a Cue.im Linux cloud PC, then leave it recoverable after suspend/resume. The setup is interactive because Cue.im wake scheduling and Cloudflare dashboard actions require the user's account and approval.
 
+## Mandatory host eligibility gate — run this first
+
+Before installing packages, writing files, enabling SSH, enrolling CFSM, or creating/configuring a Tunnel, establish that the target is a **dedicated host assigned to and controlled by this user**. Ask if this is not already clear.
+
+- A shared Agent Sandbox is **ineligible**, even when it is Linux, has `systemd`, and offers root or sudo.
+- If the target is shared, multi-tenant, ownership is unclear, or the user cannot confirm control of the host, **stop with no changes**. Do not install CFSM, enable SSH, create credentials, or configure a Tunnel.
+- Explain that setup can resume when a dedicated, user-controlled host is available. Do not treat a warning or user impatience as an exception to this gate.
+
 ## Collect fields before changing the machine
 
 Ask for each value and confirm it before use. Do not ask users to paste private keys or account-wide API tokens into chat.
