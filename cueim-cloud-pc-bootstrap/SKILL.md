@@ -9,11 +9,12 @@ Guide an agent and user through first-time setup of a Cue.im Linux cloud PC, the
 
 ## Mandatory host eligibility gate — run this first
 
-Before installing packages, writing files, enabling SSH, enrolling CFSM, or creating/configuring a Tunnel, establish that the target is a **dedicated host assigned to and controlled by this user**. Ask if this is not already clear.
+Before installing packages, writing files, enabling SSH, enrolling CFSM, or creating/configuring a Tunnel, confirm the user is authorized to administer the target and the relevant Cue.im account.
 
-- A shared Agent Sandbox is **ineligible**, even when it is Linux, has `systemd`, and offers root or sudo.
-- If the target is shared, multi-tenant, ownership is unclear, or the user cannot confirm control of the host, **stop with no changes**. Do not install CFSM, enable SSH, create credentials, or configure a Tunnel.
-- Explain that setup can resume when a dedicated, user-controlled host is available. Do not treat a warning or user impatience as an exception to this gate.
+- A Cue.im cloud PC shared by multiple Agents **under the same user's Cue.im account is supported**. “Shared by Agents” alone is not a reason to stop; this setup has been validated on another Cue.im account.
+- If “shared” may mean unrelated users/accounts or a third-party managed host, ask who can access the machine and who controls its credentials. Continue when the user confirms authorization and accepts the host's access scope; otherwise pause before making changes.
+- Check whether other Agents or users rely on existing SSH, systemd units, ports, or workspace data. Preserve existing configuration, avoid broad changes, and get approval before replacing or exposing anything.
+- Do not assume that Linux, `systemd`, or sudo alone proves authorization. Conversely, do not reject an authorized same-account multi-Agent cloud PC merely because the UI calls it shared.
 
 ## Collect fields before changing the machine
 
@@ -30,7 +31,7 @@ Ask for each value and confirm it before use. Do not ask users to paste private 
 | Persistent data path | Yes | Confirm it survives Cue.im suspend/resume and identify whether rebuilds preserve it |
 | CFSM schedule | Default 30 minutes | Confirm Cue.im Agent repeating tasks support this interval; if not, explain the platform limit |
 
-Pause if the host is shared, its ownership is unclear, or the user cannot confirm who controls the CFSM and Cloudflare accounts.
+Pause if the user cannot confirm authorization to administer the host or control the CFSM and Cloudflare accounts. Same-account Agent sharing by itself is not a blocker.
 
 ## Procedure
 
