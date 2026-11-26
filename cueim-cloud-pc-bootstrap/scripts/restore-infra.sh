@@ -55,6 +55,11 @@ if [ -x "$CLOUDFLARED_BIN" ] && [ -s "$CLOUDFLARED_TOKEN_FILE" ]; then
 else warnings+=("cloudflared binary or token unavailable"); fi
 if [ -x "$CF_PROBE_BIN" ] && [ -s "$CF_PROBE_CONFIG" ]; then
   restore_unit cf-probe.service "$CF_PROBE_UNIT_BACKUP"
+  # Guard: an empty SERVER_ID means panel auto-discovery; otherwise it must be a UUID.
+  sid="$(sed -n 's/^SERVER_ID="\{0,1\}\([^"]*\)"\{0,1\}.*/\1/p' "$CF_PROBE_CONFIG" 2>/dev/null | head -n1)"
+  if [ -n "$sid" ] && ! printf '%s' "$sid" | grep -qiE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+    warnings+=("CFSM SERVER_ID is not a panel UUID (leave it empty for auto-discovery); the node will not enroll")
+  fi
 else warnings+=("CFSM probe binary or config unavailable"); fi
 
 if [ "$changed" -eq 1 ]; then systemctl daemon-reload; actions+=("reloaded systemd"); fi
