@@ -37,7 +37,7 @@ Pause if the user cannot confirm authorization to administer the host or control
 ## Procedure
 
 1. **Inspect first.** Confirm Linux distribution, architecture, KVM/container type, `systemd`, login user, sudo, disk mount/persistence, and existing listeners. Do not overwrite existing SSH, tunnel, probe, or firewall configuration without showing the diff and getting user approval.
-2. **Establish recovery boundaries.** Choose a persistent data directory. Keep credentials outside Git and workspace archives. Explain that suspend/resume persistence does not guarantee survival of instance deletion or provider rebuild.
+2. **Establish recovery boundaries.** Choose a persistent data directory. Keep credentials outside Git and workspace archives. Explain the platform retention boundary: suspend/resume persistence does **not** guarantee survival of instance deletion or provider reset, and Cue.im retains sandbox data only temporarily (**up to 7 days from last activity on free plans, up to 21 days on paid plans**, or earlier if reset). Treat the cloud PC strictly as an ephemeral workbench — export deliverables and push code to your own remote repository promptly, and monitor Credit usage when enabling repeating Agent tasks (such as the 30-minute wake check).
 3. **Prepare SSH.** Install/enable OpenSSH using the distribution package manager. Install only the user's public key into the selected account's `authorized_keys` with directory mode `0700`, file mode `0600`, correct ownership. Do not open public port 22 when using Tunnel access.
 
    Bind SSH to loopback so only the Tunnel can reach it. On **Ubuntu 24.04+ / OpenSSH 9.6+** the server is socket-activated: `sshd_config`'s `ListenAddress` is **ignored**, because `ssh.socket` owns the listeners. Override the socket instead:
@@ -85,6 +85,7 @@ Create it with `install -o root -g root -m 0600`. Set paths to match verified ho
 
 ## Security boundaries
 
+- Treat the sandbox as temporary and auditable (platform terms allow collecting uploaded/generated files, commands, outputs, code, and task logs for debugging and safety): do not store personal passwords, high-privilege credentials, financial/health data, or unbacked-up work, and respect platform quota/anti-abuse rules.
 - Never commit credentials, private keys, account IDs, personal domains, private hostnames, IP addresses, or user-specific paths.
 - Never embed a real SSH public key in a reusable script. Public keys are still linkable identifiers; accept them as user-supplied input.
 - Keep `/workspace` project repositories in child directories; exclude credential directories from archives and backups.
