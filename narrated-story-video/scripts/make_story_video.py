@@ -389,7 +389,7 @@ def _split_clause_sentences(text, lang):
     s = text.strip()
     if lang == "en":
         return _split_en_line(s)
-    marked = re.sub(r'([，。？！：；、—])([”"』」\)\]]*)', r'\1\2\n', s)
+    marked = re.sub(r'(——|[，。？！：；、]|(?<!—)—(?!—))([”"』」\)\]]*)(?![”"』」\)\]]|[，。？！：；、])', r'\1\2\n', s)
     raw = [x.strip() for x in marked.splitlines() if x.strip()]
     merged = []
     i = 0
@@ -540,6 +540,186 @@ def build_timeline(chunks, segs, dur, snap=0.90, min_cue=1.0):
     return _align_segment_range(chunks, segs, 0.0, dur, snap=snap, min_cue=min_cue)
 
 
+def resolve_asr(args, lang):
+    """按 --align 解析本地离线 whisper-cli 与模型路径；auto 找不到时静默回退 None。"""
+    mode = getattr(args, "align", "auto")
+    if mode == "silence":
+        return None, None
+    asr_bin = (getattr(args, "asr_bin", None)
+               or os.environ.get("WHISPER_BIN")
+               or shutil.which("whisper-cli"))
+    asr_model = getattr(args, "asr_model", None) or os.environ.get("WHISPER_MODEL")
+    if not asr_model:
+        cache_dirs = [
+            os.path.expanduser("~/.cache/whisper-cpp"),
+            os.path.expanduser("~/.cache/whisper"),
+            "/opt/homebrew/share/whisper-cpp",
+        ]
+        names = (["ggml-small.en.bin", "ggml-base.en.bin", "ggml-tiny.en.bin",
+                  "ggml-medium.en.bin", "ggml-base.bin", "ggml-small.bin"]
+                 if lang == "en" else
+                 ["ggml-small.bin", "ggml-base.bin", "ggml-medium.bin", "ggml-tiny.bin"])
+        for d in cache_dirs:
+            for nm in names:
+                cand = os.path.join(d, nm)
+                if os.path.isfile(cand):
+                    asr_model = cand
+                    break
+            if asr_model:
+                break
+    if asr_bin and asr_model and os.path.isfile(asr_model):
+        return asr_bin, asr_model
+    if mode == "asr":
+        raise RuntimeError("已指定 --align asr，但未找到 whisper-cli 或模型文件（可用 --asr-bin / --asr-model 指定）")
+    return None, None
+
+
+def _parse_whisper_ts(s):
+    h, m, sec = s.replace(",", ".").split(":")
+    return int(h) * 3600 + int(m) * 60 + float(sec)
+
+
+def _norm_asr_tokens(text, lang):
+    if lang == "en":
+        return re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", text.lower())
+    return [c for c in text if "\u4e00" <= c <= "\u9fff" or c.isalnum()]
+
+
+def build_timeline_asr(chunks, audio, dur, segs, asr_bin, asr_model, work, lang):
+    """使用全本地离线 whisper-cli 词级时间戳 + 序列匹配 + 静音边界微调生成精准时间轴。"""
+    import difflib
+    wav16 = wav_path(work, "a3-asr16k")
+    run([FF, "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
+         "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav16])
+    asr_prefix = os.path.join(work, "asr")
+    run([asr_bin, "-m", asr_model, "-l", lang, "-f", wav16, "-ojf", "-of", asr_prefix, "-np"])
+    with open(asr_prefix + ".json", encoding="utf-8") as f:
+        wj = json.load(f)
+
+    asr_words = []
+    for seg in wj.get("transcription", []):
+        if lang == "en":
+            cur_w, cur_s, cur_e = "", None, None
+            for tok in seg.get("tokens", []):
+                txt = tok["text"]
+                if txt.startswith("["):
+                    continue
+                ts_f = _parse_whisper_ts(tok["timestamps"]["from"])
+                ts_t = _parse_whisper_ts(tok["timestamps"]["to"])
+                if txt.startswith(" "):
+                    if cur_w:
+                        ws = _norm_asr_tokens(cur_w, "en")
+                        dt = max(0.01, (cur_e - cur_s) / max(1, len(ws)))
+                        for k, w in enumerate(ws):
+                            asr_words.append((w, cur_s + k * dt, cur_s + (k + 1) * dt))
+                    cur_w = txt.strip()
+                    cur_s, cur_e = ts_f, ts_t
+                else:
+                    cur_w += txt
+                    if cur_s is None:
+                        cur_s = ts_f
+                    cur_e = ts_t
+            if cur_w:
+                ws = _norm_asr_tokens(cur_w, "en")
+                dt = max(0.01, (cur_e - cur_s) / max(1, len(ws)))
+                for k, w in enumerate(ws):
+                    asr_words.append((w, cur_s + k * dt, cur_s + (k + 1) * dt))
+        else:
+            for tok in seg.get("tokens", []):
+                txt = tok["text"]
+                if txt.startswith("["):
+                    continue
+                ts_f = _parse_whisper_ts(tok["timestamps"]["from"])
+                ts_t = _parse_whisper_ts(tok["timestamps"]["to"])
+                cs = _norm_asr_tokens(txt, "zh")
+                dt = max(0.01, (ts_t - ts_f) / max(1, len(cs)))
+                for k, c in enumerate(cs):
+                    asr_words.append((c, ts_f + k * dt, ts_f + (k + 1) * dt))
+
+    if len(asr_words) < 3:
+        raise RuntimeError("离线 ASR 未识别出有效词序列")
+
+    our_words = []
+    cue_ranges = []
+    for c in chunks:
+        ws = _norm_asr_tokens(c, lang)
+        s_idx = len(our_words)
+        our_words.extend(ws)
+        cue_ranges.append((s_idx, len(our_words)))
+
+    sm = difflib.SequenceMatcher(None, our_words, [w for w, _, _ in asr_words], autojunk=False)
+    word_map = {}
+    for a0, b0, size in sm.get_matching_blocks():
+        for k in range(size):
+            word_map[a0 + k] = b0 + k
+
+    # 为未直接匹配到的词按前后已匹配锚点做线性插值，得到每个词的估算起止时间
+    n_w = len(our_words)
+    matched_idx = sorted(word_map)
+    if not matched_idx:
+        raise RuntimeError("ASR 词序列与原文无法对齐")
+    word_times = [None] * n_w
+    for wi in matched_idx:
+        _, ts_s, ts_e = asr_words[word_map[wi]]
+        word_times[wi] = (ts_s, ts_e)
+
+    # 填补前后与中间缺词（如专有名词拼写差异）
+    first_m = matched_idx[0]
+    for wi in range(first_m):
+        est = max(0.0, word_times[first_m][0] - (first_m - wi) * 0.28)
+        word_times[wi] = (est, est + 0.25)
+    last_m = matched_idx[-1]
+    for wi in range(last_m + 1, n_w):
+        est = min(dur, word_times[last_m][1] + (wi - last_m) * 0.28)
+        word_times[wi] = (max(0.0, est - 0.25), est)
+    for pos in range(len(matched_idx) - 1):
+        a, b = matched_idx[pos], matched_idx[pos + 1]
+        if b - a <= 1:
+            continue
+        t0, t1 = word_times[a][1], word_times[b][0]
+        step = max(0.02, (t1 - t0) / (b - a))
+        for wi in range(a + 1, b):
+            s_est = t0 + (wi - a - 1) * step
+            word_times[wi] = (s_est, s_est + step)
+
+    # 汇总每句的起止区间，并用真实静音停顿间隙做边界微贴合
+    gaps = [(segs[k][1], segs[k + 1][0]) for k in range(len(segs) - 1)]
+    cue_starts = []
+    cue_ends = []
+    for ws_i, we_i in cue_ranges:
+        if we_i > ws_i:
+            cue_starts.append(word_times[ws_i][0])
+            cue_ends.append(word_times[we_i - 1][1])
+        else:
+            prev_e = cue_ends[-1] if cue_ends else 0.0
+            cue_starts.append(prev_e)
+            cue_ends.append(prev_e + 0.5)
+
+    bounds = [0.0 if cue_starts[0] < 0.80 else max(0.0, cue_starts[0] - 0.08)]
+    for i in range(1, len(chunks)):
+        prev_end = cue_ends[i - 1]
+        next_start = cue_starts[i]
+        raw_mid = (prev_end + next_start) / 2.0
+        chosen = max(bounds[-1] + 0.35, min(next_start - 0.02, raw_mid)) if next_start > prev_end else max(bounds[-1] + 0.35, next_start - 0.02)
+        # 在 [prev_end - 0.18, next_start + 0.18] 内找真实静音段中点贴合
+        cand_gaps = [g for g in gaps if g[1] >= prev_end - 0.18 and g[0] <= next_start + 0.18]
+        if cand_gaps:
+            best_gap = min(cand_gaps, key=lambda g: abs((g[0] + g[1]) / 2.0 - raw_mid))
+            g_mid = (best_gap[0] + best_gap[1]) / 2.0
+            # 确保不越过下一句第一个词起音之后，且大于上一边界
+            if bounds[-1] + 0.35 <= g_mid <= next_start + 0.04:
+                chosen = g_mid
+        bounds.append(round(chosen, 3))
+    bounds.append(round(dur, 3))
+
+    # 强制严格单调递增
+    for i in range(1, len(bounds)):
+        if bounds[i] <= bounds[i - 1] + 0.25:
+            bounds[i] = round(bounds[i - 1] + 0.25, 3)
+    bounds[-1] = round(max(dur, bounds[-2] + 0.25), 3)
+    return bounds, len(matched_idx), len(our_words)
+
+
 def ts(t):
     t = max(0.0, t)
     h, t = int(t // 3600), t % 3600
@@ -579,8 +759,8 @@ def wrap(s, limit, lang="zh"):
             if p < len(s) and s[p - 1] in "，。？：；、—…":
                 cut = p
                 break
-        # 避头规则：不能让下一行以标点开头
-        while cut < len(s) and s[cut] in zh_punct:
+        # 避头规则：不能让下一行以标点开头，也不能从双破折号中间劈开
+        while cut < len(s) and (s[cut] in zh_punct or (cut > 0 and s[cut - 1:cut + 1] == "——")):
             cut += 1
         if cut >= len(s):
             break
@@ -1255,6 +1435,10 @@ def cmd_build(args):
             raise ValueError("必须提供 --text（或使用 --ass 直接导入字幕）")
         (chunks, lang), (paired_texts, sec_lang) = _load_text_sources(args)
 
+    sil_db = args.silence_db if args.silence_db is not None else (-38.0 if lang == "en" else -42.0)
+    sil_min = args.silence_min if args.silence_min is not None else (0.22 if lang == "en" else 0.30)
+    snap = args.snap if args.snap is not None else (1.35 if lang == "en" else 0.90)
+
     # 标题后停顿：默认 1.2s，且必须在对齐之前插入音频。
     pause = args.title_pause
     if pause is None:
@@ -1270,8 +1454,8 @@ def cmd_build(args):
         at, src = args.title_pause_at, "手动指定"
         if at is None:
             at = auto_title_pause_at(audio, chunks,
-                                     noise_db=args.silence_db,
-                                     min_len=args.silence_min)
+                                     noise_db=sil_db,
+                                     min_len=sil_min)
             src = "自动估算"
         if not (0.10 < at < dur - 0.50):
             raise ValueError("标题停顿插入点 %.3fs 超出音频范围 (0.10~%.2fs)；"
@@ -1301,9 +1485,23 @@ def cmd_build(args):
         shutil.copyfile(os.path.abspath(args.ass), ass)
         print("[2/5] 使用外部 ASS：跳过切句与对齐")
     else:
-        segs, dur2 = silence_segments(audio, args.silence_db, args.silence_min)
+        segs, dur2 = silence_segments(audio, sil_db, sil_min)
         if len(segs) < 2:
             raise RuntimeError("未检测到朗读停顿，无法自动对齐；请检查音轨或调低 --silence-db")
+
+        asr_bin, asr_model = resolve_asr(args, lang)
+
+        def align_chunks(target_chunks):
+            if asr_bin and asr_model:
+                try:
+                    b, m_cnt, t_cnt = build_timeline_asr(
+                        target_chunks, audio, dur2, segs, asr_bin, asr_model, work, lang)
+                    return b, ("asr(%d/%d)" % (m_cnt, t_cnt))
+                except Exception as ex:
+                    if args.align == "asr":
+                        raise
+                    print("      注意：离线 ASR 对齐失败（%s），自动回退静音对齐" % ex)
+            return build_timeline(target_chunks, segs, dur2, snap, args.min_cue), "silence"
 
         # 解析目标字幕语言（仅单语种文本时自动退化为可用语种）
         req_sub = args.subtitle_lang
@@ -1312,20 +1510,19 @@ def cmd_build(args):
             if req_sub not in ("auto", lang):
                 print("      注意：仅提供单一语种文本（%s），已自动仅输出 %s 字幕" % (lang, lang))
             sub_mode = lang
-            bounds = build_timeline(chunks, segs, dur2, args.snap, args.min_cue)
+            bounds, align_used = align_chunks(chunks)
             out_chunks, out_bounds, out_lang = chunks, bounds, lang
             out_sec_chunks, out_sec_bounds, out_sec_lang = None, None, None
         else:
             sub_mode = "bilingual" if req_sub == "auto" else req_sub
             if sub_mode == lang:
-                # 单语模式输出主语种时保持最细粒度的单语切句对齐
-                bounds = build_timeline(chunks, segs, dur2, args.snap, args.min_cue)
+                bounds, align_used = align_chunks(chunks)
                 out_chunks, out_bounds, out_lang = chunks, bounds, lang
                 out_sec_chunks, out_sec_bounds, out_sec_lang = None, None, None
             else:
                 # 双语模式或仅输出译文时，均用主语种句对对齐音频，并共享同一时间窗避免双语错位
                 p1_chunks, p2_chunks = paired_texts
-                bounds = build_timeline(p1_chunks, segs, dur2, args.snap, args.min_cue)
+                bounds, align_used = align_chunks(p1_chunks)
                 if sub_mode == "bilingual":
                     out_chunks, out_bounds, out_lang = p1_chunks, bounds, lang
                     out_sec_chunks, out_sec_bounds, out_sec_lang = p2_chunks, bounds, sec_lang
@@ -1342,9 +1539,9 @@ def cmd_build(args):
         report = [dict(index=i + 1, start=round(out_bounds[i], 3),
                        end=round(out_bounds[i + 1], 3), text=c)
                   for i, c in enumerate(out_chunks)]
-        tl_payload = dict(subtitle_lang=sub_mode, lang=out_lang, width=args.width,
-                          height=args.height, fit=fit_mode, duration=dur2,
-                          tail=args.tail, cues=report)
+        tl_payload = dict(subtitle_lang=sub_mode, lang=out_lang, align=align_used,
+                          width=args.width, height=args.height, fit=fit_mode,
+                          duration=dur2, tail=args.tail, cues=report)
         if out_sec_chunks:
             tl_payload["secondary_lang"] = out_sec_lang
             tl_payload["secondary_cues"] = [
@@ -1355,8 +1552,8 @@ def cmd_build(args):
         with open(os.path.join(work, "timeline.json"), "w", encoding="utf-8") as f:
             json.dump(tl_payload, f, ensure_ascii=False, indent=2)
         sec_info = (" + %s %d 句" % (out_sec_lang, len(out_sec_chunks))) if out_sec_chunks else ""
-        print("[2/5] subtitle=%s | %s %d 句%s / %d 语音段 / 吸附阈值 %.2fs" % (
-            sub_mode, out_lang, len(out_chunks), sec_info, len(segs), args.snap))
+        print("[2/5] subtitle=%s | align=%s | %s %d 句%s / %d 语音段" % (
+            sub_mode, align_used, out_lang, len(out_chunks), sec_info, len(segs)))
         sub_out = os.path.abspath(args.subtitle_out or os.path.splitext(out)[0] + ".ass")
         shutil.copyfile(ass, sub_out)
         if args.srt:
@@ -1426,9 +1623,13 @@ def build_parser():
     b.add_argument("--trim-start", type=float, default=0.0)
     b.add_argument("--trim-end", type=float, default=None,
                    help="正数=绝对终点秒；负数=距结尾 N 秒（如 -1）")
-    b.add_argument("--silence-db", type=float, default=-42.0)
-    b.add_argument("--silence-min", type=float, default=0.30)
-    b.add_argument("--snap", type=float, default=0.90, help="句边界吸附到停顿的最大偏差秒")
+    b.add_argument("--silence-db", type=float, default=None, help="静音检测阈值 dB（默认中文 -42、英文 -38）")
+    b.add_argument("--silence-min", type=float, default=None, help="最短静音时长秒（默认中文 0.30、英文 0.22）")
+    b.add_argument("--snap", type=float, default=None, help="句边界吸附到停顿的最大偏差秒（默认中文 0.90、英文 1.35）")
+    b.add_argument("--align", choices=["auto", "asr", "silence"], default="auto",
+                   help="对齐引擎：auto=优先探测本地离线 whisper-cli，无则回退静音对齐；asr=强制离线 ASR；silence=仅静音对齐")
+    b.add_argument("--asr-bin", default=None, help="本地 whisper-cli 路径（默认查 PATH 或 WHISPER_BIN）")
+    b.add_argument("--asr-model", default=None, help="本地 whisper ggml 模型文件路径（默认查 ~/.cache/whisper-cpp/ 或 WHISPER_MODEL）")
     b.add_argument("--min-cue", type=float, default=1.0, help="单句最短显示秒数")
     b.add_argument("--line-chars", type=int, default=None,
                    help="每行最多字符数（1080 宽基准；默认中文 13、英文 34）")

@@ -2,7 +2,7 @@
 name: narrated-story-video
 description: 把「朗读音频 + 故事原文」合成逐句同步的硬字幕视频（竖屏/横屏皆可），全本地处理、不依赖云端 ASR 或图像生成。内置梦幻动态微光层（柔和呼吸月晕 + 无缝循环星尘微光）、插画自适应构图（横图竖屏模糊画框 + 底部暗遮罩）及中英文智能断句对齐。当用户要求给故事、散文、旁白、睡前故事配字幕做成视频，或把录屏/视频里的朗读音频提取出来做字幕视频，或需要按朗读停顿自动对齐字幕、裁剪片头杂音、给静态插画叠加梦幻氛围光效时，应使用本技能。也适用于已有 ASS 字幕需要重新导出视频的场景。不用于：需要词级精确对齐的卡拉 OK 效果、多机位画面剪辑、云端 TTS 生成朗读音频。
 title: 朗读字幕视频生成器
-version: 1.2.0
+version: 1.2.1
 tags: [ffmpeg, ass, subtitle, story-video, bedtime-story, local-only]
 ---
 
@@ -110,7 +110,8 @@ python scripts/make_story_video.py build \
 | 梦幻发光与动态微光 | 默认开启「呼吸月晕 + 12s 无缝循环星尘微光」叠加层（亚像素同帧率丝滑移动）；调强度用 `--glow-intensity 0.5~1.8`（默认 `1.0`），`--no-dreamy` 关闭 |
 | 背景图适配模式 | `--bg-fit auto\|cover\|blur-frame`（默认 `auto`：竖屏配横图用模糊底+完整画框，其余等比居中裁剪铺满） |
 | 画面规格（横/竖屏） | `--orientation portrait\|landscape`（默认 `portrait` 1080×1920；`landscape` 为 1920×1080） |
-| 语言与双语字幕 | `--text2 trans.txt`（按段落对照第二语种，或单文件用 `\|\|\|` 分隔）；`--subtitle-lang auto\|en\|zh\|bilingual`（单语文本自动回退为唯一可用语种） |
+| 语言与双语字幕 | `--text2 trans.txt`（按段落对照第二语种，或单文件用 `\|\|\|` 分隔）；`--subtitle-lang auto\|en\|zh\|bilingual`（两级 DP 句级配对同窗对齐，单语文本自动回退） |
+| 离线精对齐引擎 | `--align auto\|asr\|silence`（`auto` 优先使用本机离线 `whisper-cli` 词级强对齐 + 静音边界微调，无模型时自动回退纯静音；可配 `--asr-bin` / `--asr-model`） |
 | 无标题音频展示故事名 | `--header-title "Title" --header-title2 "中文标题"`（不占音频时间轴，按所选字幕语言自动选用或双语拼接；配合 `--title-pause 0 --title-first 0 --title-last 0`） |
 | 结尾停留更久 | `--tail 3` |
 | 标题后停顿（默认 1.2s） | `--title-pause 1.2 --title-pause-at 2.85`；不给切点则自动估算；散文首句自动跳过；`--title-pause 0` 关闭 |
@@ -176,6 +177,7 @@ python scripts/make_story_video.py build \
 
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
+| 1.2.1 | 2026-11-27 | 新增本地离线 `whisper-cli` 词级强对齐引擎（`--align auto\|asr\|silence` + 静音间隙中点贴合，消除长音频语速波动造成的 2–5s 提前漂移）；优化英文纯静音兜底阈值（`-38dB/0.22s/snap=1.35s`）；修复中文双破折号 `——` 被劈断的问题 |
 | 1.2.0 | 2026-11-27 | 英文朗读适配（`--lang auto\|en\|zh` 英文标点切句、缩写保护、按词平衡换行、默认 Georgia）；多语种字幕选择（`--text2` 两级 DP 句级配对同窗对齐 + `--subtitle-lang auto\|en\|zh\|bilingual`，单语文本自动回退）；自定义插画背景升级（`--orientation portrait\|landscape`、横图竖屏 `blur-frame` 模糊画框、等比裁切、底部渐变暗遮罩、`--header-title`/`--header-title2`）；新增默认梦幻动态微光层（呼吸月晕 + 12s 无缝循环亚像素飘浮星尘、`--glow-intensity` / `--no-dreamy`） |
 | 1.1.0 | 2026-11-10 | `ffprobe` 可选化（缺失时用 `ffmpeg -i` 解析兜底），新增 `FFMPEG_BIN` / `FFPROBE_BIN` 环境变量及云沙箱安装指南 |
 | 1.0.0 | 2026-11-10 | 首个公开发布版：片头/片尾能量裁剪、标题后停顿默认 1.2s（含自动切点估算）、朗读停顿检测、字数比例对齐并吸附、程序化背景、`--ass` 重导、emoji 自动替换、抽帧自检 |
