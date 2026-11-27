@@ -19,6 +19,7 @@ Each skill lives in its own directory: a `SKILL.md` playbook plus deployable scr
 | [cueim-cloud-pc-bootstrap](cueim-cloud-pc-bootstrap/) | Cue.im Linux 云电脑开荒：交互收集必要字段，接入 CFSM 与 Cloudflare SSH Tunnel，并设置 30 分钟唤醒后自愈检查 |
 | [weibo-qr-login](weibo-qr-login/) | 云端 Linux 容器上微博扫码登录：Playwright + 系统 Chromium 持久化 profile、二维码 10 分钟时效与防缓存发码、一次性扫码成功确认；凭据与日志不出本机 |
 | [weibo-video-post](weibo-video-post/) | 云端 Linux 容器上发视频微博：保存的会话发单条视频、等上传完成再点发送、个人主页核验链接；凭据与日志不出本机 |
+| [narrated-story-video](narrated-story-video/) | 朗读音频 + 原文 → 逐句同步硬字幕视频（全本地零云端 ASR；支持中/英文及两级 DP 句级配对双语字幕、横/竖屏与插画模糊画框、12s 亚像素梦幻微光层、`ffprobe` 可选兜底） |
 
 ## 使用 / Usage
 
